@@ -1,28 +1,55 @@
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 
 // ============================================================
 //  PATTERN #1 — FACTORY
 //  Sedan/Sports/Smart машин тус бүр хаалга, дугуйны тоо, моторын
-//  чадлаараа ялгаатай. Энэ ялгааг Car классын дотор if-else-ээр
-//  бус, тусдаа Factory + дэд классуудад даалгасан тул Car өөрөө
-//  "хэн намайг яаж угсрахыг" мэдэхгүй.
+//  төрлөөрөө ялгаатай. Энэ ялгааг Car классын дотор if-else-ээр
+//  бус, тусдаа Factory + дэд классуудад даалгасан.
 // ============================================================
 enum CarType { SEDAN, SPORTS, SMART }
 
 class CarFactory {
     public static Car createCar(CarType type, String brand, String model, Color color) {
+        Car car;
         switch (type) {
-            case SEDAN:  return new SedanCar(brand, model, color);
-            case SPORTS: return new SportsCar(brand, model, color);
-            case SMART:  return new SmartCar(brand, model, color);
+            case SEDAN:  car = new SedanCar(brand, model, color); break;
+            case SPORTS: car = new SportsCar(brand, model, color); break;
+            case SMART:  car = new SmartCar(brand, model, color); break;
             default: throw new IllegalArgumentException("Тодорхойгүй машины төрөл: " + type);
         }
+        // Factory өөрөө үүсгэсэн машин бүрээ Singleton registry-д бүртгэнэ.
+        CarRegistry.getInstance().register(car);
+        return car;
     }
 }
 
 // ============================================================
-//  PATTERN #2 — STRATEGY
+//  PATTERN #2 — SINGLETON
+//  Программ даяар машины бүртгэл хөтлөгч НЭГ л объект байх ёстой,
+//  тиймээс constructor-ыг private болгож, гадаад талаас зөвхөн
+//  getInstance()-оор л хандах боломжтой болгосон.
+// ============================================================
+class CarRegistry {
+    // Eager initialization — класс ачаалагдмагц нэг л удаа үүснэ, thread-safe.
+    private static final CarRegistry INSTANCE = new CarRegistry();
+
+    private final List<Car> cars = new ArrayList<>();
+
+    private CarRegistry() { } // гаднаас "new CarRegistry()" хийхийг хориглоно
+
+    public static CarRegistry getInstance() { return INSTANCE; }
+
+    public void register(Car car) { cars.add(car); }
+
+    public int size() { return cars.size(); }
+
+    public List<Car> getAllCars() { return Collections.unmodifiableList(cars); }
+}
+
+// ============================================================
+//  PATTERN #3 — STRATEGY
 //  Жолоодлогын горим бүр тусдаа класс тул шинэ горим нэмэхэд
 //  Car болон дэд классуудын код огт өөрчлөгдөхгүй.
 // ============================================================
@@ -56,10 +83,10 @@ class SportMode implements DrivingMode {
 }
 
 // ============================================================
-//  PATTERN #3 — OBSERVER
+//  PATTERN #4 — OBSERVER
 //  Car хурдаа өөрчлөх бүрд dashboard, сэрэмжлүүлэгч гэрэл зэрэг
-//  сонирхогч талд автоматаар мэдэгдэнэ. Car өөрөө тэднийг мэдэхгүй,
-//  зөвхөн CarObserver интерфэйсээр л харилцана.
+//  сонирхогч талд автоматаар мэдэгдэнэ. addObserver/removeObserver
+//  хоёулаа байгаа тул ажиглагчийг ажиллаж байх зуур нь ч болзошгүй.
 // ============================================================
 interface CarObserver {
     void onSpeedChanged(String carLabel, int newSpeed);
@@ -82,24 +109,41 @@ class SpeedWarningLight implements CarObserver {
 }
 
 // ============================================================
-//  Дэд эд ангиуд (Engine = composition, Wheel/Door = aggregation)
+//  Engine — ЭНЭ БОЛ НЭРТЭЙ GoF PATTERN БИШ, зүгээр л
+//  interface-based polymorphism. Petrol/Electric моторын ажиллах
+//  зарчим өөр тул Car нь "хэдэн hp вэ, ямар түлш вэ" гэсэн string
+//  барихын оронд Engine интерфэйсийг л мэднэ.
 // ============================================================
-class Engine {
-    private final int horsepower;
-    private final String fuelType;
-    private boolean running = false;
+interface Engine {
+    void start();
+    void stop();
+}
 
-    public Engine(int horsepower, String fuelType) {
-        this.horsepower = horsepower;
-        this.fuelType = fuelType;
-    }
+class PetrolEngine implements Engine {
+    private final int horsepower;
+    private boolean running = false;
+    public PetrolEngine(int horsepower) { this.horsepower = horsepower; }
     public void start() {
         running = true;
-        System.out.println("Мотор аслаа (" + horsepower + " hp, " + fuelType + ")");
+        System.out.println("Бензин мотор аслаа (" + horsepower + " hp)");
     }
     public void stop() { running = false; }
 }
 
+class ElectricEngine implements Engine {
+    private final int horsepower;
+    private boolean running = false;
+    public ElectricEngine(int horsepower) { this.horsepower = horsepower; }
+    public void start() {
+        running = true;
+        System.out.println("Цахилгаан мотор дуугүй аслаа (" + horsepower + " hp)");
+    }
+    public void stop() { running = false; }
+}
+
+// ============================================================
+//  Дэд эд ангиуд (Wheel/Door = aggregation)
+// ============================================================
 class Wheel {
     private final int sizeInInches;
     public Wheel(int sizeInInches) { this.sizeInInches = sizeInInches; }
@@ -116,8 +160,8 @@ enum Color { RED, BLACK, WHITE, BLUE }
 
 // ============================================================
 //  Car — abstract base. Шууд үүсэхгүй, зөвхөн дэд классаараа
-//  дамжина. Хаалга/дугуйны тоог дэд класс тус бүр
-//  getDoorCount()/getWheelCount()-оор өөрөө мэдүүлнэ.
+//  дамжина. getDoorCount()/getWheelCount() нь public болсон тул
+//  JUnit тестээс шууд шалгаж болно (тестлэх боломжийг сайжруулав).
 // ============================================================
 abstract class Car {
     protected final String brand;
@@ -130,24 +174,25 @@ abstract class Car {
     protected final List<Door> doors = new ArrayList<>();
     private final List<CarObserver> observers = new ArrayList<>();
 
-    protected Car(String brand, String model, Color color, int horsepower, String fuelType) {
+    protected Car(String brand, String model, Color color, Engine engine) {
         this.brand = brand;
         this.model = model;
         this.color = color;
-        this.engine = new Engine(horsepower, fuelType);
-        // Санамж: энд abstract методыг constructor дотор дуудаж байгаа нь
-        // ерөнхийдөө Java-д болгоомжтой хэрэглэх ёстой зүйл (subclass-ийн
-        // талбарууд хараахан бэлэн болоогүй байдаг). Гэхдээ getDoorCount()/
-        // getWheelCount() нь зөвхөн тогтмол тоо буцаадаг тул энд аюулгүй.
+        this.engine = engine;
+        // Санамж: abstract методыг constructor дотор дуудаж байгаа нь
+        // Java-д ерөнхийдөө болгоомжтой хэрэглэдэг зүйл (subclass-ийн
+        // field хараахан бэлэн болоогүй байдаг). getDoorCount()/
+        // getWheelCount() зөвхөн тогтмол тоо буцаадаг тул энд аюулгүй.
         for (int i = 0; i < getWheelCount(); i++) wheels.add(new Wheel(17));
         for (int i = 0; i < getDoorCount(); i++) doors.add(new Door("Хаалга-" + (i + 1)));
         this.mode = new NormalMode();
     }
 
-    protected abstract int getDoorCount();
-    protected abstract int getWheelCount();
+    public abstract int getDoorCount();
+    public abstract int getWheelCount();
 
     public void addObserver(CarObserver o) { observers.add(o); }
+    public void removeObserver(CarObserver o) { observers.remove(o); }
     private void notifyObservers() {
         for (CarObserver o : observers) o.onSpeedChanged(brand + " " + model, currentSpeed);
     }
@@ -157,15 +202,23 @@ abstract class Car {
         System.out.println(">> Горим солигдлоо: " + mode.getModeName());
     }
 
+    public String getCurrentModeName() { return mode.getModeName(); }
+
     public void startEngine() { engine.start(); }
 
     public void accelerate(int amount) {
+        if (amount < 0) {
+            throw new IllegalArgumentException("Хурдасгах хэмжээ сөрөг байж болохгүй: " + amount);
+        }
         currentSpeed += amount;
         mode.adjustPerformance(currentSpeed);
         notifyObservers();
     }
 
     public void brake(int amount) {
+        if (amount < 0) {
+            throw new IllegalArgumentException("Тормослох хэмжээ сөрөг байж болохгүй: " + amount);
+        }
         currentSpeed = Math.max(0, currentSpeed - amount);
         notifyObservers();
     }
@@ -182,18 +235,18 @@ abstract class Car {
 // ------------------- Гурван бодит машины төрөл -------------------
 class SedanCar extends Car {
     public SedanCar(String brand, String model, Color color) {
-        super(brand, model, color, 150, "Petrol");
+        super(brand, model, color, new PetrolEngine(150));
     }
-    protected int getDoorCount()  { return 4; }
-    protected int getWheelCount() { return 4; }
+    public int getDoorCount()  { return 4; }
+    public int getWheelCount() { return 4; }
 }
 
 class SportsCar extends Car {
     public SportsCar(String brand, String model, Color color) {
-        super(brand, model, color, 450, "Petrol");
+        super(brand, model, color, new PetrolEngine(450));
     }
-    protected int getDoorCount()  { return 2; }
-    protected int getWheelCount() { return 4; }
+    public int getDoorCount()  { return 2; }
+    public int getWheelCount() { return 4; }
 
     // Спорт машин Eco горимд шилжихгүй — Strategy pattern дээр
     // нэмсэн бодит бизнесийн дүрмийн жишээ.
@@ -209,28 +262,31 @@ class SportsCar extends Car {
 
 class SmartCar extends Car {
     public SmartCar(String brand, String model, Color color) {
-        super(brand, model, color, 60, "Electric");
+        super(brand, model, color, new ElectricEngine(60));
         setMode(new EcoMode()); // жижиг автомат машин анхандаа Eco горимтой эхэлнэ
     }
-    protected int getDoorCount()  { return 1; }
-    protected int getWheelCount() { return 4; }
+    public int getDoorCount()  { return 1; }
+    public int getWheelCount() { return 4; }
 }
 
 // ============================================================
-//  Демо: Factory-гаар үүсгэж → Strategy-гаар удирдаж → Observer-оор ажиглана
+//  Демо: Factory-гаар үүсгэж (→ Singleton registry-д бүртгэгдэнэ)
+//  → Strategy-гаар удирдаж → Observer-оор ажиглаж → validation шалгана
 // ============================================================
 public class CarDemo {
     public static void main(String[] args) {
-        System.out.println("=== 1) SEDAN (4 хаалгатай) ===");
+        System.out.println("=== 1) SEDAN (4 хаалгатай, Petrol) ===");
         Car sedan = CarFactory.createCar(CarType.SEDAN, "Toyota", "Camry", Color.WHITE);
-        sedan.addObserver(new Dashboard());
+        Dashboard sedanDash = new Dashboard();
+        sedan.addObserver(sedanDash);
         sedan.addObserver(new SpeedWarningLight(120));
         sedan.printInfo();
         sedan.startEngine();
         sedan.accelerate(60);
-        sedan.accelerate(70);
+        sedan.removeObserver(sedanDash); // dashboard-оо унтраая гэж бодъё
+        sedan.accelerate(70);            // одоо зөвхөн warning light л мэдэгдэнэ
 
-        System.out.println("\n=== 2) SPORTS (2 хаалгатай) ===");
+        System.out.println("\n=== 2) SPORTS (2 хаалгатай, Petrol) ===");
         Car sports = CarFactory.createCar(CarType.SPORTS, "Ferrari", "F8", Color.RED);
         sports.addObserver(new Dashboard());
         sports.addObserver(new SpeedWarningLight(200));
@@ -240,12 +296,25 @@ public class CarDemo {
         sports.setMode(new SportMode()); // зөвшөөрнө
         sports.accelerate(220);
 
-        System.out.println("\n=== 3) SMART (1 хаалгатай, автомат жижиг машин) ===");
+        System.out.println("\n=== 3) SMART (1 хаалгатай, Electric) ===");
         Car smart = CarFactory.createCar(CarType.SMART, "EasyMile", "EZ10", Color.BLUE);
         smart.addObserver(new Dashboard());
         smart.printInfo();
         smart.startEngine();
         smart.openAllDoors();
         smart.accelerate(15);
+
+        System.out.println("\n=== 4) Validation шалгах ===");
+        try {
+            smart.accelerate(-10); // санаатайгаар буруу утга өгье
+        } catch (IllegalArgumentException e) {
+            System.out.println("Хүлээгдэж байсан алдаа баригдлаа: " + e.getMessage());
+        }
+
+        System.out.println("\n=== 5) Singleton Registry ===");
+        System.out.println("Нийт бүртгэгдсэн машин: " + CarRegistry.getInstance().size());
+        // getInstance() хаанаас дуудсан ч ЯГ НЭГ л объект буцаана:
+        boolean sameInstance = CarRegistry.getInstance() == CarRegistry.getInstance();
+        System.out.println("Registry үргэлж адилхан объект уу? " + sameInstance);
     }
 }
